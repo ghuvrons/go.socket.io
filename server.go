@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	engineIO "github.com/ghuvrons/go.engine.io"
-	"github.com/google/uuid"
 )
 
 type Options struct {
@@ -15,14 +14,16 @@ type Options struct {
 
 type Server struct {
 	engineio   *engineIO.Server
-	Sockets    Sockets // [TODO] make it private
 	socketsMtx *sync.Mutex
 
 	handlers struct {
 		connection func(*Socket)
 	}
 
-	Rooms         map[string]*Room // key: roomName
+	// list of sockets
+	namespaces map[string]*Namespace // key: namespace
+	rooms      map[string]*Room      // key: roomName
+
 	authenticator func(interface{}) bool
 }
 
@@ -36,9 +37,10 @@ func NewServer(opt Options) *Server {
 
 	server := &Server{
 		engineio:   engineIO.NewServer(eioOptions),
-		Sockets:    Sockets{},
 		socketsMtx: &sync.Mutex{},
-		Rooms:      map[string]*Room{},
+
+		namespaces: map[string]*Namespace{},
+		rooms:      map[string]*Room{},
 	}
 
 	server.engineio.OnConnection(func(conn *engineIO.Socket) {
@@ -58,7 +60,8 @@ func (server *Server) Authenticator(f func(interface{}) bool) {
 
 func (server *Server) onNewSocket(socket *Socket) {
 	server.socketsMtx.Lock()
-	server.Sockets[socket.id] = socket
+	ns := server.getNamespace(socket.namespace)
+	ns.sockets[socket.id] = socket
 	server.socketsMtx.Unlock()
 
 	if server.handlers.connection != nil {
@@ -68,7 +71,8 @@ func (server *Server) onNewSocket(socket *Socket) {
 
 func (server *Server) onClosedSocket(socket *Socket) {
 	server.socketsMtx.Lock()
-	delete(server.Sockets, socket.id)
+	ns := server.getNamespace(socket.namespace)
+	delete(ns.sockets, socket.id)
 	server.socketsMtx.Unlock()
 }
 
@@ -77,20 +81,41 @@ func (server *Server) OnConnection(f func(*Socket)) {
 }
 
 // Room methods
-func (server *Server) CreateRoom(roomName string) (room *Room) {
-	room = &Room{
-		Name:    roomName,
-		sockets: map[uuid.UUID]*Socket{},
-	}
+func (server *Server) getRoom(roomName string) *Room {
+	room, isFound := server.rooms[roomName]
+	if !isFound {
+		room = &Room{
+			Name:    roomName,
+			sockets: Sockets{},
+		}
 
-	if server.Rooms == nil {
-		server.Rooms = map[string]*Room{}
-	}
+		if server.rooms == nil {
+			server.rooms = map[string]*Room{}
+		}
 
-	server.Rooms[roomName] = room
-	return
+		server.rooms[roomName] = room
+	}
+	return room
 }
 
-func (server *Server) DeleteRoom(roomName string) {
-	delete(server.Rooms, roomName)
+func (server *Server) deleteRoom(roomName string) {
+	delete(server.rooms, roomName)
+}
+
+// Namespace methods
+func (server *Server) getNamespace(name string) *Namespace {
+	ns, isFound := server.namespaces[name]
+	if !isFound {
+		ns = &Namespace{
+			name:    name,
+			sockets: Sockets{},
+		}
+
+		if server.namespaces == nil {
+			server.namespaces = map[string]*Namespace{}
+		}
+
+		server.namespaces[name] = ns
+	}
+	return ns
 }

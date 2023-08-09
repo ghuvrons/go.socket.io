@@ -135,15 +135,12 @@ func (socket *Socket) onClose() {
 }
 
 func (socket *Socket) SocketJoin(roomName string) {
-	room, isFound := socket.server.Rooms[roomName]
-	if !isFound {
-		room = socket.server.CreateRoom(roomName)
-	}
+	room := socket.server.getRoom(roomName)
 	room.join(socket)
 }
 
 func (socket *Socket) SocketLeave(roomName string) {
-	room, isFound := socket.server.Rooms[roomName]
+	room, isFound := socket.server.rooms[roomName]
 	if !isFound {
 		return
 	}
@@ -169,10 +166,7 @@ func (sockets Sockets) SocketJoin(roomName string) {
 		break
 	}
 
-	room, isFound := server.Rooms[roomName]
-	if !isFound {
-		room = server.CreateRoom(roomName)
-	}
+	room := server.getRoom(roomName)
 
 	for _, socket := range sockets {
 		room.join(socket)
@@ -190,7 +184,7 @@ func (sockets Sockets) SocketLeave(roomName string) {
 		server = socket.server
 		break
 	}
-	room, isFound := server.Rooms[roomName]
+	room, isFound := server.rooms[roomName]
 	if !isFound {
 		return
 	}
@@ -200,6 +194,6 @@ func (sockets Sockets) SocketLeave(roomName string) {
 	}
 
 	if len(room.sockets) == 0 {
-		server.DeleteRoom(roomName)
+		server.deleteRoom(roomName)
 	}
 }
